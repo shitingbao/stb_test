@@ -1,0 +1,30 @@
+syntax = "proto3";
+
+package api.flow.v1;
+
+option go_package = "flow/api/flow/v1;v1";
+option java_multiple_files = true;
+option java_package = "api.flow.v1";
+
+service Flow {
+	rpc CreateFlow (CreateFlowRequest) returns (CreateFlowReply);
+	rpc UpdateFlow (UpdateFlowRequest) returns (UpdateFlowReply);
+	rpc DeleteFlow (DeleteFlowRequest) returns (DeleteFlowReply);
+	rpc GetFlow (GetFlowRequest) returns (GetFlowReply);
+	rpc ListFlow (google.protobuf.Empty) returns (ListFlowReply);
+}
+
+message CreateFlowRequest {}
+message CreateFlowReply {}
+
+message UpdateFlowRequest {}
+message UpdateFlowReply {}
+
+message DeleteFlowRequest {}
+message DeleteFlowReply {}
+
+message GetFlowRequest {}
+message GetFlowReply {}
+
+message ListFlowRequest {}
+message ListFlowReply {}
