@@ -14,7 +14,14 @@ service Flow {
 	rpc ListFlow (google.protobuf.Empty) returns (ListFlowReply);
 }
 
-message CreateFlowRequest {}
+message Response {
+	int64 code = 1;
+	string msg = 2;
+}
+
+message CreateFlowRequest {
+	string name = 1;
+}
 message CreateFlowReply {}
 
 message UpdateFlowRequest {}
@@ -23,8 +30,12 @@ message UpdateFlowReply {}
 message DeleteFlowRequest {}
 message DeleteFlowReply {}
 
-message GetFlowRequest {}
-message GetFlowReply {}
+message GetFlowRequest {
+	string name = 1;
+}
+message GetFlowReply {
+	Response = 1;
+}
 
 message ListFlowRequest {}
 message ListFlowReply {}
