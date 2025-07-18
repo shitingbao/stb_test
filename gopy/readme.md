@@ -127,3 +127,83 @@ gcc -shared -o libadd.so add.o
 最终需要的文件
 （go生成的可执行文件+完整的结构的python文件即可）
 在这个目录下就是（gopy执行文件+pycode/greettest.py文件结构和文件）即可
+
+# 自动生成C的编译文件
+改用直接引入的方式
+```
+#include "callpy.c"
+```
+这样直接编译即可
+
+# 两种编译方式区别
+```
+✅ 方式一：直接 #include "callpy.c" → 自动编译，推荐开发阶段使用
+Go 调用 C 时，通过 #include "callpy.c"，cgo 自动编译 C 源码；
+
+不需要手动使用 gcc 生成 .o 或 .a 文件；
+
+callpy.c 中的函数实现会直接编进最终的 Go 二进制；
+
+非常适合开发调试阶段，因为改了 .c 文件后直接 go build 即可。
+```
+❗方式二：只 #include "callpy.h" → 你必须手动编译 .a 或 .o，然后链接
+```
+callpy.h 只是声明头文件，没有实现；
+
+你必须用命令如：
+
+bash
+Copy
+Edit
+gcc -c ccode/callpy.c -o ccode/callpy.o
+ar rcs ccode/libcallpy.a ccode/callpy.o
+然后在 #cgo LDFLAGS: 中写上 ./ccode/libcallpy.a，Go 才能正确链接：
+
+go
+Copy
+Edit
+#cgo LDFLAGS: ./ccode/libcallpy.a ...
+适合生产打包或封装发布场景，因为 .a 文件可以脱离源码，只暴露接口。
+```
+
+前后代码区别
+推荐（手动生成a文件）
+```
+package main
+
+/*
+#cgo CFLAGS: -I/Library/Frameworks/Python.framework/Versions/3.11/include/python3.11
+#cgo LDFLAGS: -L/Library/Frameworks/Python.framework/Versions/3.11/lib -lpython3.11 -ldl -framework CoreFoundation ./ccode/libcallpy.a
+#include "ccode/callpy.h"
+*/
+import "C"
+
+func main() {
+	C.call_python(C.CString("Gu Yu"), 3)
+}
+
+```
+自动的，开发时候
+
+```
+package main
+
+/*
+#cgo CFLAGS: -I/Library/Frameworks/Python.framework/Versions/3.11/include/python3.11 -I./ccode
+#cgo LDFLAGS: -L/Library/Frameworks/Python.framework/Versions/3.11/lib -lpython3.11 -ldl -framework CoreFoundation
+#include "callpy.c"
+*/
+import "C"
+
+func main() {
+	C.call_python(C.CString("Gu Yu"), 3)
+}
+
+```
+# ✨ 实用建议
+```
+场景	推荐方式	优点
+本地开发调试	直接包含 .c 文件	无需额外编译步骤
+生产发布	编译 .a 并仅引入 .h	保密源码、链接更明确
+```
+
