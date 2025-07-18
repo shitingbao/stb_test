@@ -36,3 +36,5 @@ go.work.sum
 test/test
 
 .DS_Store
+
+gopy/gopy
