@@ -1,7 +1,20 @@
 package main
 
-import "log"
+import (
+	"log"
+)
 
 func main() {
-	log.Println("")
+	defer func() {
+		log.Println("11111")
+	}()
+
+	defer func() {
+		log.Println("22222")
+	}()
+
+	defer func() {
+		log.Println("33333")
+	}()
+	log.Println("base:")
 }
