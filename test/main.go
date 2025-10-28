@@ -2,19 +2,13 @@ package main
 
 import (
 	"log"
+
+	"github.com/google/uuid"
+	u2 "github.com/pborman/uuid"
 )
 
 func main() {
-	defer func() {
-		log.Println("11111")
-	}()
 
-	defer func() {
-		log.Println("22222")
-	}()
-
-	defer func() {
-		log.Println("33333")
-	}()
-	log.Println("base:")
+	log.Println("base:", uuid.New().String())
+	log.Println("base2:", u2.New())
 }
