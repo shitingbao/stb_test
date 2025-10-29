@@ -3,12 +3,22 @@ package main
 import (
 	"log"
 
-	"github.com/google/uuid"
-	u2 "github.com/pborman/uuid"
+	"github.com/gogf/gf/util/gconv"
 )
 
-func main() {
+type pen struct {
+	Name string
+}
 
-	log.Println("base:", uuid.New().String())
-	log.Println("base2:", u2.New())
+type pen2 struct {
+	Name []string
+}
+
+func main() {
+	p := pen{Name: "aa,bb"}
+
+	p2 := pen2{}
+
+	err := gconv.Struct(p, &p2)
+	log.Println(err, gconv.String(p2))
 }
