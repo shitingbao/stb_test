@@ -1,0 +1,28 @@
+FROM golang:1.23.10-alpine3.22-git as builder
+
+WORKDIR /build
+COPY . .
+
+ENV GOPRIVATE=codeup.aliyun.com
+ENV GOPROXY=https://goproxy.cn
+ENV GOSUMDB="sum.golang.org"
+ENV GO111MODULE=on
+ENV CGO_ENABLED=1
+ENV GOARCH=amd64
+ENV GOOS=linux
+
+RUN echo "machine codeup.aliyun.com login 你的coduphttp账号 password 你的codeuphttps密码" >~/.netrc
+
+RUN go mod download
+
+RUN go build -ldflags='-w -s -extldflags "-static"' -tags musl -o ./bin/main ./.
+
+FROM alpine:3.20 as final
+
+WORKDIR /app
+COPY --from=builder /build/bin/main /app/
+COPY --from=builder /build/manifest /app/manifest
+COPY --from=builder /build/resource /app/resource
+RUN mkdir -p /app/resource/log
+
+ENTRYPOINT [ "/app/main" ]
