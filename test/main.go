@@ -2,8 +2,6 @@ package main
 
 import (
 	"log"
-
-	"github.com/gogf/gf/v2/util/gconv"
 )
 
 type pen struct {
@@ -15,6 +13,9 @@ type pen2 struct {
 }
 
 func main() {
-	log.Println(gconv.Int(false))
-	// TimestampToTime(1764926287)
+	n, err := loadHappy(1)
+	if err != nil {
+		log.Fatal(err)
+	}
+	log.Printf("done, fetched=%d\n", n)
 }
