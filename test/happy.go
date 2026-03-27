@@ -25,6 +25,8 @@ type HappyResult struct {
 	Result   []HappyData `json:"result"`
 }
 
+// 我是统计概率数学学者，这是我收集的80份自然现象出现的每年的案例用 1-80 标记，时间最新的在最前面，这个/Users/shitingbao/mygo/src/stb_test/test/data.csv文档里面，记录了过去的一部分出现特殊景观的标记点，我想根据概率来决定，我明天去哪一个地方拍摄，我的计划是 选择 最少1个，最多 10个地方，来安排。请你根据数据概率（多方面），分别列出每个标记点下一次出现的概率，以及不出现的概率，给我一份完整的设计文档，先给我设计，我应该考虑哪些数据公式
+
 // 快乐8
 // 接口数据
 // curl --location --request GET 'https://www.cwl.gov.cn/cwl_admin/front/cwlkj/search/kjxx/findDrawNotice?name=kl8&issueCount=&issueStart=&issueEnd=&dayStart=&dayEnd=&pageNo=2&pageSize=30&week=&systemType=PC'\” \   -H '\”Accept: application/json, text/javascript, */*; q=0.01'\” \   -H '\”Accept-Language: zh-CN,zh;q=0.9'\” \   -H '\”Cache-Control: no-cache'\” \   -H '\”Connection: keep-alive'\” \   -b '\”HMF_CI=73d8c9f0fb03dc6f6122b48b3a127ecc01e54b5e5cd61ec789780fa3bed9e662820bf52721c92e55feab40a130bffcfea7fe5779bd813823b0eedf16c12fa639b5; 21_vq=1'\” \   -H '\”Pragma: no-cache'\” \   -H '\”Referer: https://www.cwl.gov.cn/ygkj/wqkjgg/kl8/'\” \   -H '\”Sec-Fetch-Dest: empty'\” \   -H '\”Sec-Fetch-Mode: cors'\” \   -H '\”Sec-Fetch-Site: same-origin'\” \   -H '\”User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36'\” \   -H '\”X-Requested-With: XMLHttpRequest'\” \   -H '\”sec-ch-ua: "Chromium";v="146", "Not-A.Brand";v="24", "Google Chrome";v="146"'\” \   -H '\”sec-ch-ua-mobile: ?0'\” \   -H '\”sec-ch-ua-platform: "macOS"'\”&systemType=PC' \
