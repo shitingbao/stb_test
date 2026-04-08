@@ -1,21 +1,21 @@
 package main
 
 import (
-	"log"
+	"github.com/carlos7ags/folio/document"
+	"github.com/carlos7ags/folio/font"
+	"github.com/carlos7ags/folio/layout"
 )
 
-type pen struct {
-	Name string
-}
-
-type pen2 struct {
-	Name []string
-}
-
 func main() {
-	n, err := loadHappy(1)
-	if err != nil {
-		log.Fatal(err)
-	}
-	log.Printf("done, fetched=%d\n", n)
+	doc := document.NewDocument(document.PageSizeA4)
+	doc.Info.Title = "Hello World"
+	doc.SetAutoBookmarks(true)
+
+	doc.Add(layout.NewHeading("Hello, Folio!", layout.H1))
+	doc.Add(layout.NewParagraph(
+		"Generated with Folio — the modern PDF library for Go.",
+		font.Helvetica, 12,
+	))
+
+	doc.Save("hello.pdf")
 }
