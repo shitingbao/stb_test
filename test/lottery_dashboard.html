@@ -1,0 +1,535 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>彩票预测命中率仪表盘 | ML Integrated</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: -apple-system, 'Segoe UI', Roboto, sans-serif; background: #0f172a; color: #e2e8f0; padding: 20px; }
+.header { text-align: center; padding: 30px 0 10px; }
+.header h1 { font-size: 28px; font-weight: 700; background: linear-gradient(135deg, #60a5fa, #a78bfa); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+.header .sub { color: #64748b; font-size: 14px; margin-top: 6px; }
+.header .ver { color: #475569; font-size: 12px; margin-top: 4px; }
+.loading-screen { position: fixed; top: 0; left: 0; right: 0; bottom: 0; display: flex; align-items: center; justify-content: center; background: #0f172a; z-index: 999; }
+.loading-screen .spinner { width: 40px; height: 40px; border: 4px solid #1e293b; border-top-color: #60a5fa; border-radius: 50%; animation: spin .8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.dashboard-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; max-width: 1600px; margin: 20px auto; }
+.card { background: #1e293b; border-radius: 16px; padding: 20px; border: 1px solid #334155; box-shadow: 0 4px 6px rgba(0,0,0,0.3); }
+.card-full { grid-column: 1 / -1; }
+.card h2 { font-size: 15px; font-weight: 600; color: #94a3b8; margin-bottom: 16px; display: flex; align-items: center; gap: 8px; }
+.card h2 .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; flex-shrink: 0; }
+.card h2 .badge { font-size: 10px; padding: 2px 8px; border-radius: 10px; background: #334155; color: #64748b; margin-left: auto; font-weight: 400; }
+.chart-container { position: relative; height: 320px; }
+.chart-container-tall { height: 400px; }
+.stats-row { display: flex; gap: 16px; flex-wrap: wrap; }
+.stat-box { flex: 1; min-width: 110px; background: #0f172a; border-radius: 12px; padding: 14px; text-align: center; }
+.stat-box .value { font-size: 24px; font-weight: 700; }
+.stat-box .label { font-size: 11px; color: #64748b; margin-top: 4px; }
+.summary-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.summary-table th { background: #0f172a; padding: 8px 6px; text-align: center; color: #64748b; font-weight: 600; position: sticky; top: 0; z-index: 1; font-size: 11px; }
+.summary-table td { padding: 7px 6px; text-align: center; border-bottom: 1px solid #1e293b; }
+.summary-table tr:hover td { background: #1a2538; }
+.hit-good { color: #22c55e; font-weight: 600; }
+.hit-medium { color: #eab308; font-weight: 600; }
+.hit-poor { color: #ef4444; font-weight: 600; }
+.hit-value { font-weight: 700; font-size: 13px; }
+.info-box { background: #0f172a; border-radius: 12px; padding: 12px 16px; font-size: 12px; color: #94a3b8; line-height: 1.6; }
+.info-box strong { color: #e2e8f0; }
+.footer { text-align: center; padding: 20px; color: #475569; font-size: 12px; max-width: 1600px; margin: 0 auto; }
+.btn { padding: 5px 12px; border-radius: 8px; border: 1px solid #334155; background: #1e293b; color: #94a3b8; font-size: 12px; cursor: pointer; transition: all 0.2s; }
+.btn:hover { background: #334155; color: #e2e8f0; }
+.btn.active { background: #3b82f6; color: #fff; border-color: #3b82f6; }
+@media (max-width: 900px) { .dashboard-grid { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+
+<div class="loading-screen" id="loadingScreen"><div class="spinner"></div></div>
+
+<div class="header">
+  <h1>🎰 彩票预测命中率仪表盘</h1>
+  <div class="sub">ML-Integrated · 6模型集成 (RF · XGB · OM · Rule · MK · AD) · <span id="periodRange">加载中...</span></div>
+  <div class="ver" id="dataVer"></div>
+</div>
+
+<div class="dashboard-grid" id="dashboard" style="display:none">
+  <!-- KPI -->
+  <div class="card card-full" id="kpiSection">
+    <div class="stats-row" id="kpiRow"></div>
+  </div>
+
+  <!-- Prediction Overview -->
+  <div class="card card-full" id="predictionSection">
+    <h2><span class="dot" style="background:#f472b6"></span>🔮 最新预测概况</h2>
+    <div id="predictionContent" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px"></div>
+  </div>
+
+  <!-- Full ensemble chart -->
+  <div class="card card-full">
+    <h2><span class="dot" style="background:#60a5fa"></span>集成命中率全览 (<span id="totalPeriodsLabel"></span>期)<span class="badge" id="detailBadge"></span></h2>
+    <div class="chart-container chart-container-tall"><canvas id="fullEnsembleChart"></canvas></div>
+  </div>
+
+  <!-- Per-model chart -->
+  <div class="card card-full">
+    <h2><span class="dot" style="background:#a78bfa"></span>各模型命中率<span class="badge" id="modelPeriodLabel"></span></h2>
+    <div class="button-bar" id="modelChartToggle" style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
+      <button class="btn active" data-mode="line">📈 折线图</button>
+      <button class="btn" data-mode="bar">📊 柱状图</button>
+    </div>
+    <div class="chart-container chart-container-tall"><canvas id="modelChart"></canvas></div>
+  </div>
+
+  <!-- Feature analysis -->
+  <div class="card">
+    <h2><span class="dot" style="background:#4ade80"></span>特征命中 (小号/奇数/集成)</h2>
+    <div class="chart-container" style="height:350px"><canvas id="featureChart"></canvas></div>
+  </div>
+
+  <!-- Model cumulative -->
+  <div class="card">
+    <h2><span class="dot" style="background:#fbbf24"></span>模型累积表现<span class="badge" id="cumModelPeriodLabel"></span></h2>
+    <div class="chart-container" style="height:200px"><canvas id="modelCumChart"></canvas></div>
+    <div id="modelRanking" style="margin-top:10px;display:grid;grid-template-columns:1fr 1fr;gap:6px;font-size:12px"></div>
+  </div>
+
+  <!-- Detail table -->
+  <div class="card card-full">
+    <h2><span class="dot" style="background:#f472b6"></span>每期详细数据表</h2>
+    <div style="overflow-x:auto;max-height:420px;overflow-y:auto">
+      <table class="summary-table" id="detailTable">
+        <thead>
+          <tr><th>期号</th><th>算法</th><th>集成命中</th><th>RF</th><th>XGB</th><th>OM</th><th>Rule</th><th>MK</th><th>AD</th><th title="实际开奖中小号(1-40)数量" style="cursor:help">小号开</th><th title="实际开奖中奇数数量" style="cursor:help">奇数开</th><th>最强模型</th></tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <div class="info-box" style="margin-top:12px">
+      📝 着色: <span class="hit-good">≥35%优秀</span> · <span class="hit-medium">25-34%正常</span> · <span class="hit-poor">≤24%偏低</span>
+      &nbsp;· ⭐ 最后一个节点上的蓝点表示下期预测命中率
+    </div>
+  </div>
+</div>
+
+<div class="footer">
+  <span id="updateTime"></span>
+</div>
+
+<script>
+const MODEL_CFG = {
+  RF: {bg:'#3b82f6',border:'#60a5fa',label:'Random Forest'},
+  XGB: {bg:'#22c55e',border:'#4ade80',label:'XGBoost'},
+  OM: {bg:'#a855f7',border:'#c084fc',label:'Omission'},
+  Rule: {bg:'#f59e0b',border:'#fbbf24',label:'Rule Based'},
+  MK: {bg:'#ec4899',border:'#f472b6',label:'Markov'},
+  AD: {bg:'#14b8a6',border:'#2dd4bf',label:'Adaptive State'},
+};
+const MODEL_KEYS = ['RF','XGB','OM','Rule','MK','AD'];
+
+function hitClass(v) {
+  if (v >= 35) return 'hit-good';
+  if (v >= 25) return 'hit-medium';
+  return 'hit-poor';
+}
+
+const EMBEDDED_DATA = {"allPeriods": [{"p": 1922, "ver": "ML-V1.0", "hit": 35}, {"p": 1923, "ver": "ML-V1.1", "hit": 25}, {"p": 1924, "ver": "ML-V1.2", "hit": 45}, {"p": 1925, "ver": "ML-V1.3", "hit": 35}, {"p": 1926, "ver": "ML-V1.4", "hit": 35}, {"p": 1930, "ver": "V2.4/V2.5", "hit": 20}, {"p": 1931, "ver": "V2.5", "hit": 35}, {"p": 1932, "ver": "V2.6", "hit": 20}, {"p": 1933, "ver": "V2.7", "hit": 5}, {"p": 1934, "ver": "V2.8", "hit": 30}, {"p": 1935, "ver": "V2.9", "hit": 10}, {"p": 1936, "ver": "V3.0", "hit": 15}, {"p": 1937, "ver": "V3.1", "hit": 35}, {"p": 1938, "ver": "V3.2", "hit": 20}, {"p": 1939, "ver": "V3.3", "hit": 30}, {"p": 1940, "ver": "V3.4", "hit": 20}, {"p": 1941, "ver": "V3.5", "hit": 25}, {"p": 1942, "ver": "V3.6", "hit": 30}, {"p": 1943, "ver": "V3.7", "hit": 40}, {"p": 1944, "ver": "V3.8", "hit": 20}, {"p": 1945, "ver": "V3.9", "hit": 20}, {"p": 1946, "ver": "V5.1", "hit": 25}, {"p": 1947, "ver": "V5.2", "hit": 20}, {"p": 1948, "ver": "V5.3", "hit": 15}, {"p": 1949, "ver": "V5.4", "hit": 35}, {"p": 1950, "ver": "V5.5", "hit": 35}, {"p": 1951, "ver": "V5.6", "hit": 35}, {"p": 1952, "ver": "V5.7", "hit": 30}, {"p": 1953, "ver": "V5.8", "hit": 35}, {"p": 1954, "ver": "V5.8", "hit": 40}], "modelDetails": {"1939": {"RF": 4, "XGB": 9, "OM": 6, "Rule": 7, "ens": 10, "smallAct": 10, "oddAct": 9}, "1940": {"RF": 4, "XGB": 4, "OM": 3, "Rule": 6, "ens": 5, "smallAct": 10, "oddAct": 11}, "1941": {"RF": 5, "XGB": 3, "OM": 7, "Rule": 6, "ens": 6, "smallAct": 8, "oddAct": 9}, "1942": {"RF": 6, "XGB": 8, "OM": 6, "Rule": 6, "ens": 6, "smallAct": 10, "oddAct": 10}, "1943": {"RF": 7, "XGB": 8, "OM": 7, "Rule": 6, "ens": 8, "smallAct": 8, "oddAct": 9}, "1944": {"RF": 6, "XGB": 6, "OM": 4, "Rule": 6, "ens": 4, "smallAct": 12, "oddAct": 12}, "1945": {"RF": 4, "XGB": 3, "OM": 4, "Rule": 3, "ens": 4, "smallAct": 5, "oddAct": 10}, "1946": {"RF": 6, "XGB": 3, "OM": 7, "Rule": 4, "MK": 6, "AD": 4, "ens": 5, "smallAct": 11, "oddAct": 9}, "1947": {"RF": 6, "XGB": 3, "OM": 4, "Rule": 7, "MK": 3, "AD": 5, "ens": 4, "smallAct": 9, "oddAct": 14}, "1948": {"RF": 3, "XGB": 6, "OM": 4, "Rule": 4, "MK": 7, "AD": 3, "ens": 3, "smallAct": 10, "oddAct": 13}, "1949": {"RF": 8, "XGB": 8, "OM": 7, "Rule": 8, "MK": 7, "AD": 7, "ens": 7, "smallAct": 11, "oddAct": 10}, "1950": {"RF": 0, "XGB": 2, "OM": 0, "Rule": 3, "MK": 15, "AD": 5, "ens": 7, "smallAct": 14, "oddAct": 8}, "1951": {"RF": 2, "XGB": 2, "OM": 0, "Rule": 4, "MK": 14, "AD": 5, "ens": 35, "smallAct": 8, "oddAct": 11}, "1952": {"RF": 8, "XGB": 6, "OM": 6, "Rule": 6, "MK": 4, "AD": 2, "ens": 30, "smallAct": 12, "oddAct": 9}, "1953": {"RF": 8, "XGB": 6, "OM": 9, "Rule": 5, "MK": 2, "AD": 4, "ens": 35, "smallAct": 10, "oddAct": 9}, "1954": {"RF": 7, "XGB": 8, "OM": 7, "Rule": 9, "MK": 7, "AD": 8, "ens": 40, "smallAct": 11, "oddAct": 8}}, "prediction": {"nextPeriod": 1955, "version": "V5.9", "numbers": [2, 4, 5, 7, 19, 21, 23, 27, 35, 39, 41, 48, 49, 54, 57, 63, 64, 69, 70, 73], "small": 10, "odd": 14, "z1": 5, "z2": 5, "z3": 5, "z4": 5, "top5": [5, 4, 41, 7, 19], "consensus5": [5, 41], "consensus": [], "expected": 30, "lastPeriod": 1953, "lastDraw": [6, 12, 19, 20, 21, 22, 27, 30, 31, 32, 34, 42, 51, 54, 57, 66, 70, 71, 72, 75], "lastHits": [22, 30, 31, 34, 51, 54, 71, 75], "lastHitRate": 40}, "updatedAt": "2026-05-25 09:49", "lastMetadata": {"lastPeriod": 1953, "lastDraw": [6, 12, 19, 20, 21, 22, 27, 30, 31, 32, 34, 42, 51, 54, 57, 66, 70, 71, 72, 75], "lastHits": [22, 30, 31, 34, 51, 54, 71, 75], "lastHitRate": 40, "small": 11, "odd": 8, "zones": {"1-20": 4, "21-40": 7, "41-60": 4, "61-80": 5}, "nextPrediction": [2, 4, 5, 7, 19, 21, 23, 27, 35, 39, 41, 48, 49, 54, 57, 63, 64, 69, 70, 73], "predictedPeriod": 1955, "version": "V5.9"}};
+
+async function init() {
+  const DATA = EMBEDDED_DATA;
+  const AP = DATA.allPeriods;
+  const MD = DATA.modelDetails || {};
+
+  document.getElementById('dataVer').textContent = '数据更新: ' + (DATA.updatedAt || '—');
+  document.getElementById('periodRange').textContent =
+    '#' + AP[0].p + ' ~ #' + AP[AP.length-1].p;
+  document.getElementById('totalPeriodsLabel').textContent = AP.length;
+
+  const detailPeriods = Object.keys(MD).sort((a,b)=>a-b).map(Number);
+  document.getElementById('detailBadge').textContent =
+    '模型细分: ' + (detailPeriods.length ? '#'+detailPeriods[0]+'~#'+detailPeriods[detailPeriods.length-1] : '无');
+  document.getElementById('modelPeriodLabel').textContent =
+    detailPeriods.length ? '('+detailPeriods.length+'期)' : '';
+  document.getElementById('cumModelPeriodLabel').textContent =
+    '('+(detailPeriods.length * 20)+'次预测)';
+
+  // ---------- KPIs ----------
+  const hits = AP.map(d => d.hit);
+  const avg = (hits.reduce((a,b)=>a+b,0) / hits.length).toFixed(1);
+  const best = Math.max(...hits);
+  const worst = Math.min(...hits);
+  const last = hits[hits.length-1];
+
+  let bestModel = '';
+  if (detailPeriods.length) {
+    const tot = {};
+    for (const m of MODEL_KEYS) {
+      let s = 0;
+      for (const k of detailPeriods) s += MD[k][m] || 0;
+      tot[m] = ((s / (detailPeriods.length * 20)) * 100).toFixed(1);
+    }
+    const bm = Object.entries(tot).sort((a,b)=>b[1]-a[1])[0];
+    bestModel = bm[0] + ' (' + bm[1] + '%)';
+  }
+
+  document.getElementById('kpiRow').innerHTML = `
+    <div class="stat-box"><div class="value" style="color:#60a5fa">${avg}%</div><div class="label">平均命中(${AP.length}期)</div></div>
+    <div class="stat-box"><div class="value" style="color:#22c55e">${best}%</div><div class="label">最佳命中</div></div>
+    <div class="stat-box"><div class="value" style="color:#ef4444">${worst}%</div><div class="label">最差命中</div></div>
+    <div class="stat-box"><div class="value" style="color:#94a3b8">${AP.length}</div><div class="label">总分析期数</div></div>
+    <div class="stat-box"><div class="value" style="color:${bestModel ? '#a78bfa' : '#475569'}">${bestModel || '—'}</div><div class="label">综合最佳(有细分时)</div></div>
+    <div class="stat-box"><div class="value" style="color:${hitClass(last).replace('hit-','') === 'good' ? '#22c55e' : hitClass(last).replace('hit-','') === 'medium' ? '#eab308' : '#ef4444'}">${last}%</div><div class="label">最近(#${AP[AP.length-1].p})</div></div>
+  `;
+
+  // ---------- Prediction Overview ----------
+  const pred = DATA.prediction;
+  if (pred) {
+    document.getElementById('predictionSection').style.display = '';
+    const predHtml = `
+      <div class="stat-box" style="grid-column:1">
+        <div style="font-size:14px;font-weight:600;color:#f472b6">第${pred.nextPeriod}期预测</div>
+        <div style="font-size:11px;color:#94a3b8;margin-top:4px">版本: ${pred.version}</div>
+        <div style="margin-top:8px;font-size:13px;color:#e2e8f0;line-height:1.7">
+          ${pred.numbers.map(n => `<span style="display:inline-block;padding:2px 6px;margin:1px;background:#0f172a;border-radius:4px;border:1px solid #334155">${String(n).padStart(2,'0')}</span>`).join('')}
+        </div>
+      </div>
+      <div class="stat-box" style="grid-column:2">
+        <div style="font-size:13px;color:#94a3b8">特征</div>
+        <div style="font-size:12px;margin-top:8px;line-height:1.8;text-align:left;padding:0 8px">
+          <div>📊 小号: ${pred.small}/20 (${pred.small*5}%)</div>
+          <div>📊 奇数: ${pred.odd}/20 (${pred.odd*5}%)</div>
+          <div>📊 1-20:${pred.z1} 21-40:${pred.z2} 41-60:${pred.z3} 61-80:${pred.z4}</div>
+        </div>
+      </div>
+      <div class="stat-box" style="grid-column:3">
+        <div style="font-size:13px;color:#94a3b8">概率精选 TOP5</div>
+        <div style="font-size:14px;font-weight:700;margin-top:8px;color:#eab308">
+          ${pred.top5.map(n => String(n).padStart(2,'0')).join(', ')}
+        </div>
+        <div style="font-size:11px;color:#64748b;margin-top:6px">
+          ✅ ${pred.consensus5}模型投票: ${pred.consensus.join(', ')}
+        </div>
+        <div style="font-size:11px;color:#60a5fa;margin-top:4px">
+          🎯 预期命中率: <strong>${pred.expected}%</strong>
+        </div>
+      </div>
+      <div class="stat-box" style="grid-column:1;grid-row:2">
+        <div style="font-size:13px;color:#94a3b8">上期 #${pred.lastPeriod} 命中回顾</div>
+        <div style="font-size:11px;color:#64748b;margin-top:6px">
+          <div>📋 开奖: ${pred.lastDraw.map(n => String(n).padStart(2,'0')).join(', ')}</div>
+          <div style="margin-top:4px">🎯 命中: ${pred.lastHits.map(n => String(n).padStart(2,'0')).join(', ')}</div>
+          <div style="margin-top:4px;font-size:13px;color:#4ade80;font-weight:600">命中率: ${pred.lastHitRate}%</div>
+        </div>
+      </div>
+    `;
+    document.getElementById('predictionContent').innerHTML = predHtml;
+  } else {
+    document.getElementById('predictionSection').style.display = 'none';
+  }
+
+  // ---------- Chart 1: Full Ensemble with prediction dot ----------
+  const ctx1 = document.getElementById('fullEnsembleChart').getContext('2d');
+  const mlAvg = 25.9;
+  const grad = ctx1.createLinearGradient(0, 0, 0, 400);
+  grad.addColorStop(0, 'rgba(96,165,250,0.25)');
+  grad.addColorStop(1, 'rgba(96,165,250,0.02)');
+
+  // Build labels and data, possibly adding prediction point
+  const chartLabels = AP.map(d => '#' + d.p);
+  const chartHits = [...hits];
+  let predPointLabel = null;
+  let predPointHit = null;
+
+  if (pred && DATA.prediction) {
+    chartLabels.push(`#${pred.nextPeriod}(预测)`);
+    chartHits.push(null); // placeholder, will be overwritten
+    predPointLabel = chartLabels.length - 1;
+    predPointHit = pred.expected;
+  }
+
+  // Build datasets
+  const hitDatasets = [{
+    label: '集成命中率',
+    data: chartHits,
+    borderColor: '#60a5fa',
+    backgroundColor: grad,
+    fill: true,
+    tension: 0.3,
+    pointBackgroundColor: chartHits.map((v, i) => {
+      if (pred && i === chartHits.length - 1) return '#3b82f6'; // prediction point
+      return v >= 35 ? '#22c55e' : v >= 25 ? '#eab308' : '#ef4444';
+    }),
+    pointBorderColor: chartHits.map((v, i) => {
+      if (pred && i === chartHits.length - 1) return '#93c5fd';
+      return v + ''; // dummy
+    }),
+    pointRadius: chartHits.map((v, i) => {
+      if (pred && i === chartHits.length - 1) return 10; // prediction point bigger
+      return detailPeriods.includes(AP[i].p) ? 7 : 4.5;
+    }),
+    pointStyle: chartHits.map((v, i) => {
+      if (pred && i === chartHits.length - 1) return 'star'; // prediction point as star
+      return 'circle';
+    }),
+    pointHoverRadius: chartHits.map((v, i) => {
+      if (pred && i === chartHits.length - 1) return 13;
+      return 9;
+    }),
+    borderWidth: 2.5,
+    borderDash: chartHits.map((v, i) => {
+      if (pred && i === chartHits.length - 1) return [6, 3]; // dashed for prediction
+      return [];
+    }),
+    spanGaps: true, // allow skipping null values
+  }, {
+    label: 'ML均值 (25.9%)',
+    data: chartHits.map(() => mlAvg),
+    borderColor: 'rgba(148,163,184,0.4)',
+    borderDash: [6, 4],
+    borderWidth: 1.5,
+    pointRadius: 0,
+    fill: false,
+  }];
+
+  // Add a separate dataset just for the prediction star so we can customize its tooltip
+  if (pred && DATA.prediction) {
+    const predArr = new Array(chartLabels.length).fill(null);
+    predArr[predPointLabel] = predPointHit;
+    const predArrPrev = new Array(chartLabels.length).fill(null);
+    predArrPrev[predPointLabel - 1] = chartHits[chartHits.length - 2];
+    // Connect last real to predicted
+    const connectLine = new Array(chartLabels.length).fill(null);
+    connectLine[predPointLabel - 1] = chartHits[chartHits.length - 2];
+    connectLine[predPointLabel] = predPointHit;
+
+    hitDatasets.push({
+      label: '下期预测',
+      data: predArrPrev,
+      borderColor: 'rgba(59,130,246,0.3)',
+      backgroundColor: 'rgba(59,130,246,0.1)',
+      pointRadius: new Array(chartLabels.length).fill(0),
+      pointHoverRadius: new Array(chartLabels.length).fill(0),
+      borderWidth: 0,
+      fill: false,
+    });
+    // Prediction star as its own dataset for tooltip
+    hitDatasets.push({
+      label: `预测 #${pred.nextPeriod}: ${pred.expected}%`,
+      data: predArr,
+      backgroundColor: 'rgba(59,130,246,0.2)',
+      borderColor: '#3b82f6',
+      borderWidth: 0,
+      pointBackgroundColor: '#3b82f6',
+      pointBorderColor: '#93c5fd',
+      pointBorderWidth: 3,
+      pointRadius: new Array(chartLabels.length).fill(0).map((_, i) => i === predPointLabel ? 12 : 0),
+      pointStyle: new Array(chartLabels.length).fill(0).map((_, i) => i === predPointLabel ? 'star' : 'circle'),
+      pointHoverRadius: new Array(chartLabels.length).fill(0).map((_, i) => i === predPointLabel ? 15 : 0),
+      fill: false,
+    });
+    // Connect line
+    hitDatasets.push({
+      label: false,
+      data: connectLine,
+      borderColor: 'rgba(59,130,246,0.5)',
+      borderDash: [5, 4],
+      borderWidth: 2,
+      pointRadius: 0,
+      fill: false,
+    });
+  }
+
+  new Chart(ctx1, {
+    type: 'line',
+    data: { labels: chartLabels, datasets: hitDatasets },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      interaction: { intersect: false, mode: 'index' },
+      plugins: {
+        legend: {
+          labels: { color: '#94a3b8', font: { size: 11 } },
+          onClick: function(e, legendItem, legend) {
+            // don't allow toggling the connect line
+            const index = legendItem.datasetIndex;
+            if (index === 3) { // connect line
+              const meta = legend.chart.getDatasetMeta(index);
+              meta.hidden = !meta.hidden;
+            } else {
+              Chart.defaults.plugins.legend.onClick.call(this, e, legendItem, legend);
+            }
+          }
+        },
+        tooltip: {
+          callbacks: {
+            title: items => {
+              const idx = items[0].dataIndex;
+              return chartLabels[idx] + (idx === AP.length ? '' : ' (' + (AP[idx]?.ver || '') + ')');
+            },
+            label: ctx => {
+              if (ctx.datasetIndex === 0) {
+                return '集成命中率: ' + ctx.parsed.y + '%';
+              }
+              if (ctx.datasetIndex === 2 && ctx.parsed.y !== null) {
+                return '🔮 预测: ' + ctx.parsed.y + '%';
+              }
+              return ctx.dataset.label ? ctx.dataset.label + ': ' + ctx.parsed.y + '%' : null;
+            },
+            afterBody: items => {
+              const idx = items[0].dataIndex;
+              if (pred && idx === AP.length) {
+                return '📋 预测 ' + pred.numbers.length + '个号码';
+              }
+              const p = AP[idx]?.p;
+              const d = p ? MD[p] : null;
+              return d ? 'RF:'+d.RF+'/20 XGB:'+d.XGB+'/20 OM:'+d.OM+'/20 Rule:'+d.Rule+'/20' + (d.MK != null ? ' MK:'+d.MK+'/20 AD:'+d.AD+'/20' : '') : '(仅有集成命中率)';
+            }
+          }
+        }
+      },
+      scales: {
+        x: { ticks: { color: '#64748b', maxTicksLimit: 25 }, grid: { color: 'rgba(51,65,85,0.3)' } },
+        y: { min: 0, max: 55, ticks: { color: '#64748b', callback: v => v + '%' }, grid: { color: 'rgba(51,65,85,0.3)' } }
+      }
+    }
+  });
+
+  // ---------- Chart 2: Per Model ----------
+  const ctx2 = document.getElementById('modelChart').getContext('2d');
+  let modelChart;
+  function buildMC(mode) {
+    if (modelChart) modelChart.destroy();
+    const lbls = detailPeriods.map(p => '#' + p);
+    const ds = MODEL_KEYS.map(m => ({
+      label: MODEL_CFG[m].label,
+      data: detailPeriods.map(p => (MD[p][m] || 0) * 5),
+      borderColor: MODEL_CFG[m].border,
+      backgroundColor: MODEL_CFG[m].bg,
+      fill: false,
+      tension: 0.3,
+      pointBackgroundColor: MODEL_CFG[m].bg,
+      pointRadius: mode === 'line' ? 5 : undefined,
+      pointHoverRadius: 8,
+      borderWidth: 2.5,
+      borderRadius: 4, barPercentage: 0.8, categoryPercentage: 0.7,
+    }));
+    ds.push({
+      label: '集成命中率', data: detailPeriods.map(p => (MD[p].ens || 0) * 5),
+      borderColor: '#fbbf24', borderDash: [6,3], borderWidth: 2,
+      pointBackgroundColor: '#fbbf24', pointRadius: mode === 'line' ? 5 : undefined,
+      fill: false, tension: 0.3,
+    });
+    modelChart = new Chart(ctx2, {
+      type: mode === 'line' ? 'line' : 'bar',
+      data: { labels: lbls, datasets: ds },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: {
+          legend: { labels: { color: '#94a3b8', font: { size: 11 } } },
+          tooltip: { mode: 'index', intersect: mode === 'bar', callbacks: { label: ctx => ctx.dataset.label + ': ' + ctx.parsed.y.toFixed(0) + '%' } }
+        },
+        scales: {
+          x: { ticks: { color: '#64748b' }, grid: { color: 'rgba(51,65,85,0.3)' } },
+          y: { min: 0, max: 55, ticks: { color: '#64748b', callback: v => v + '%' }, grid: { color: 'rgba(51,65,85,0.3)' } }
+        }
+      }
+    });
+  }
+  buildMC('line');
+  document.getElementById('modelChartToggle').addEventListener('click', function(e) {
+    if (e.target.tagName === 'BUTTON') {
+      this.querySelectorAll('.btn').forEach(b => b.classList.remove('active'));
+      e.target.classList.add('active');
+      buildMC(e.target.dataset.mode);
+    }
+  });
+
+  // ---------- Chart 3: Feature ----------
+  new Chart(document.getElementById('featureChart').getContext('2d'), {
+    type: 'bar',
+    data: {
+      labels: detailPeriods.map(p => '#' + p),
+      datasets: [{
+        label: '小号实开(1-40)', data: detailPeriods.map(p => MD[p].smallAct),
+        backgroundColor: 'rgba(59,130,246,0.1)', borderColor: '#3b82f6', borderWidth: 2,
+        borderDash: [5,3], type: 'line', fill: false, pointRadius: 4, tension: 0.3, order: 1,
+      }, {
+        label: '奇数实开', data: detailPeriods.map(p => MD[p].oddAct),
+        backgroundColor: 'rgba(34,197,94,0.1)', borderColor: '#22c55e', borderWidth: 2,
+        borderDash: [5,3], type: 'line', fill: false, pointRadius: 4, tension: 0.3, order: 1,
+      }, {
+        label: '集成命中', data: detailPeriods.map(p => MD[p].ens),
+        backgroundColor: 'rgba(251,191,36,0.6)', borderColor: '#fbbf24', borderWidth: 2,
+        borderRadius: 4, order: 0,
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { labels: { color: '#94a3b8', font: { size: 11 } } } },
+      scales: {
+        x: { ticks: { color: '#64748b' }, grid: { color: 'rgba(51,65,85,0.3)' } },
+        y: { min: 0, max: 14, ticks: { color: '#64748b' }, grid: { color: 'rgba(51,65,85,0.3)' } }
+      }
+    }
+  });
+
+  // ---------- Chart 4: Cumulative ----------
+  const cumData = MODEL_KEYS.map(m => detailPeriods.reduce((s,p) => s + (MD[p][m] || 0), 0));
+  const nPer = detailPeriods.length;
+  new Chart(document.getElementById('modelCumChart').getContext('2d'), {
+    type: 'bar',
+    data: {
+      labels: MODEL_KEYS.map(m => MODEL_CFG[m].label),
+      datasets: [{ label: '累积命中数', data: cumData, backgroundColor: MODEL_KEYS.map(m => MODEL_CFG[m].bg), borderRadius: 6, borderSkipped: false }]
+    },
+    options: {
+      indexAxis: 'y', responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => '累计: ' + ctx.parsed.x + '/' + (nPer*20) + ' (' + (ctx.parsed.x/(nPer*20)*100).toFixed(1) + '%)' } } },
+      scales: {
+        x: { ticks: { color: '#64748b' }, grid: { color: 'rgba(51,65,85,0.3)' }, beginAtZero: true },
+        y: { ticks: { color: '#94a3b8', font: { size: 11, weight: 'bold' } }, grid: { display: false } }
+      }
+    }
+  });
+  document.getElementById('modelRanking').innerHTML = MODEL_KEYS.map((m,i) =>
+    `<div style="background:#0f172a;border-radius:8px;padding:6px 10px;display:flex;justify-content:space-between;border-left:3px solid ${MODEL_CFG[m].bg}">
+      <span style="color:#94a3b8;font-size:11px">${MODEL_CFG[m].label}</span>
+      <span><span style="color:#e2e8f0;font-weight:600;font-size:13px">${cumData[i]}</span><span style="color:#64748b;font-size:11px">/${nPer*20} (${(cumData[i]/(nPer*20)*100).toFixed(1)}%)</span></span>
+    </div>`
+  ).join('');
+
+  // ---------- Table ----------
+  const tbody = document.querySelector('#detailTable tbody');
+  tbody.innerHTML = AP.slice().reverse().map(d => {
+    const pct = d.hit;
+    const has = MD[d.p];
+    const mc = has ? MODEL_KEYS.map(m => {
+      const v = (has[m] || 0) * 5;
+      return `<td class="${hitClass(v)}">${v}%</td>`;
+    }).join('') : '<td colspan="6" style="color:#475569;font-size:11px">—</td>';
+    const bm = has ? (() => {
+      const best = MODEL_KEYS.filter(m => has[m] != null).map(m => ({m, v: (has[m]||0)*5})).sort((a,b)=>b.v-a.v)[0];
+      return best ? `<span style="color:${MODEL_CFG[best.m].bg}">${best.m} ${best.v}%</span>` : '<span style="color:#475569">—</span>';
+    })() : '<span style="color:#475569">—</span>';
+    return `<tr>
+      <td><strong>#${d.p}</strong></td>
+      <td><span style="color:#60a5fa">${d.ver}</span></td>
+      <td class="${hitClass(pct)} hit-value">${pct}%</td>
+      ${mc}
+      <td>${has ? has.smallAct+'/20' : '—'}</td>
+      <td>${has ? has.oddAct+'/20' : '—'}</td>
+      <td>${bm}</td>
+    </tr>`;
+  }).join('');
+
+  document.getElementById('updateTime').textContent = '🕐 ' + new Date().toLocaleString('zh-CN', {timeZone:'Asia/Shanghai'});
+
+  // Show
+  document.getElementById('loadingScreen').style.display = 'none';
+  document.getElementById('dashboard').style.display = 'grid';
+}
+
+init();
+</script>
+</body>
+</html>
